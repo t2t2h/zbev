@@ -1,0 +1,56 @@
+name: Build AflatoonMubdi dylib
+
+on:
+  push:
+  workflow_dispatch:
+    inputs:
+      build_mode:
+        description: Build profile
+        required: true
+        default: embedded-safe
+        type: choice
+        options:
+          - embedded-safe
+          - jailbreak-runtime
+
+jobs:
+  build:
+    runs-on: macos-14
+    env:
+      AP_BUILD_MODE: ${{ github.event.inputs.build_mode || 'embedded-safe' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build tools
+        run: brew install make ldid
+
+      - name: Install Theos
+        run: |
+          git clone --depth 1 --recursive https://github.com/theos/theos.git "$HOME/theos"
+          echo "THEOS=$HOME/theos" >> "$GITHUB_ENV"
+          echo "$(brew --prefix make)/libexec/gnubin" >> "$GITHUB_PATH"
+
+      - name: Check sources
+        run: |
+          ls -la
+          test -f Agora.m && test -f AgoraStubs.h && test -f Makefile
+
+      - name: Build dylib
+        run: |
+          make clean || true
+          make FINALPACKAGE=1 AP_BUILD_MODE="$AP_BUILD_MODE"
+          mkdir -p out
+          find .theos -type f -name 'AflatoonMubdi.dylib' -exec cp {} out/ \;
+          test -s out/AflatoonMubdi.dylib
+
+      - name: Inspect artifact
+        run: |
+          file out/AflatoonMubdi.dylib
+          otool -L out/AflatoonMubdi.dylib
+          echo "Build mode: $AP_BUILD_MODE" > out/BUILD-MODE.txt
+          shasum -a 256 out/AflatoonMubdi.dylib > out/SHA256.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AflatoonMubdi-${{ env.AP_BUILD_MODE }}-dylib
+          path: out/*
